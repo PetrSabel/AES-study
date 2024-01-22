@@ -54,7 +54,7 @@ pub(crate) fn gf_multiplication(mut a: u8, mut b: u8) -> u8 {
 
     // Look at each bit of 'b'
     for _ in 0..8 {
-        if b ^ 1 != 0 {
+        if b & 1 > 0 {
             result ^= a; // adding 'a'
         }
 
@@ -72,7 +72,7 @@ pub(crate) fn gf_multiplication(mut a: u8, mut b: u8) -> u8 {
 }
 
 pub(crate) fn rot_word(column: &mut [u8; 4]) {
-    column.rotate_right(1);
+    column.rotate_left(1);
 }
 
 // TODO: use predefined s_box
@@ -112,14 +112,15 @@ pub(crate) fn transpose(matrix: &mut [[u8; 4]; 4]) {
 pub(crate) fn array_into_matrix(arr: [u8; 16]) -> [[u8; 4]; 4] {
     let mut result = [[0; 4]; 4];
     for i in 0..arr.len() {
-        result[i/4][i%4] = arr[i];
+        result[i%4][i/4] = arr[i];
     }
-
     result
 }
 
-pub(crate) fn matrix_to_array(matrix: [[u8; 4]; 4]) -> [u8; 16] {
+pub(crate) fn matrix_to_array(mut matrix: [[u8; 4]; 4]) -> [u8; 16] {
     let mut result = [0; 16];
+
+    transpose(&mut matrix);
     for (i, m) in matrix.into_iter().flatten().enumerate() {
         result[i] = m;
     }
@@ -135,7 +136,9 @@ pub(crate) fn add_to_column(col1: &mut [u8; 4], col2: &[u8; 4]) {
 
 #[cfg(test)]
 mod tests {
-    use super::{compute_s_box, compute_inverse_s_box, array_into_matrix};
+    use crate::utils::gf_multiplication;
+
+    use super::{array_into_matrix, compute_inverse_s_box, compute_s_box, rot_word};
 
     #[test]
     fn test_s_box() {
@@ -157,7 +160,24 @@ mod tests {
     #[test]
     fn test_array_into_matrix() {
         let array = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-        let matrix = [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14, 15]];
+        let matrix = [[0, 4, 8, 12], [1, 5, 9, 13], [2, 6, 10, 14], [3, 7, 11, 15]];
         assert_eq!(array_into_matrix(array), matrix);
+    }
+
+    #[test]
+    fn test_gf_multiplication() {
+        let a = 0xd4;
+        let b = 0x02;
+        assert_eq!(0xb3, gf_multiplication(a, b));
+        assert_eq!(a, gf_multiplication(a, 0x1));
+    }
+
+    #[test]
+    fn test_rot_word() {
+        let mut word = [42, 182, 254, 92];
+        rot_word(&mut word);
+        let expected = [182, 254, 92, 42];
+
+        assert_eq!(expected, word);
     }
 }

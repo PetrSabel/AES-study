@@ -45,7 +45,7 @@ fn mix_columns(bytes: &mut [[u8; 4]; 4]) {
 fn key128_schedule(key: [u8; 16]) -> [[[u8; 4]; 4]; 11] {
     const KEYS_NUMBER: usize = 11;
     let mut first_key: [[u8; 4]; 4] = array_into_matrix(key);
-    // Temporally store keys by-columns
+    // // Temporally store keys by-columns
     transpose(&mut first_key);
     let mut generated_keys = [first_key; KEYS_NUMBER];
     // Leave first key untouched
@@ -53,9 +53,15 @@ fn key128_schedule(key: [u8; 16]) -> [[[u8; 4]; 4]; 11] {
         let last_key = generated_keys[i-1];
         let mut new_key = last_key.clone();
         let last_column = &mut last_key[3].clone();
+        // println!("HERE {:?}", last_column);
+        
         rot_word(last_column);
+        // println!("ROT {:?}", last_column);
         sub_word(last_column);
+        // println!("S {:?}", last_column);
         r_con(last_column, i);
+        // println!("AFTER {:?}", last_column);
+        
         // New first column
         add_to_column(&mut new_key[0], &last_column);
         // New second column
@@ -84,7 +90,7 @@ fn add_round_key(bytes: &mut [[u8; 4]; 4], keys: &[[[u8; 4]; 4]; 11], round: usi
     }
 }
 
-fn encrypt_block(block: [u8; 16], key: [u8; 16]) -> [u8; 16] {
+pub fn encrypt_block(block: [u8; 16], key: [u8; 16]) -> [u8; 16] {
     let mut block = array_into_matrix(block);
     let keys = key128_schedule(key);
 
@@ -112,7 +118,9 @@ fn encrypt_block(block: [u8; 16], key: [u8; 16]) -> [u8; 16] {
 
 #[cfg(test)]
 mod tests {
-    use super::{encrypt_block, shift_rows};
+    use crate::{round_operations::{mix_column, mix_columns}, utils::transpose};
+
+    use super::{encrypt_block, key128_schedule, shift_rows};
 
     #[test]
     fn test_shift_rows() {
@@ -130,9 +138,43 @@ mod tests {
     }
 
     #[test]
+    fn test_key128_schedule() {
+        let key = [0xc3, 0x2c, 0x5c, 166, 181, 128, 94, 12, 219, 141, 165, 122, 42, 182, 254, 92];
+        let keys = key128_schedule(key);
+
+        let last_key = [[9, 119, 111, 46], [99, 40, 31, 86], [11, 176, 173, 94], [19, 155, 174, 232]];
+        assert_eq!(keys[10], last_key);
+    }
+
+    #[test]
     fn test_encrypt_block() {
-        let block = [0xff; 16];
-        let result = encrypt_block(block, block.clone());
-        println!("{:x?}", result);
+        let block: [u8;16] = "crypto{MYAES128}".as_bytes().try_into().unwrap();
+        println!("{}", std::str::from_utf8(&block).unwrap());
+        let key = [0xc3, 0x2c, 0x5c, 166, 181, 128, 94, 12, 219, 141, 165, 122, 42, 182, 254, 92];
+        let result = encrypt_block(block, key);
+
+        let expected_result = [209, 79, 20, 106, 164, 43, 79, 182, 161, 196, 8, 66, 41, 143, 18, 221];
+        assert_eq!(result, expected_result);
+    }
+
+    #[test]
+    fn test_mix_column() {
+        let mut column = [0xd4, 0xbf, 0x5d, 0x30];
+        mix_column(&mut column);
+
+        let expected = [4, 102, 129, 229];
+        assert_eq!(column, expected);
+    }
+
+    #[test]
+    fn test_mix_columns() {
+        let column = [0xd4, 0xbf, 0x5d, 0x30];
+        let mut mat = [column; 4];
+        transpose(&mut mat);
+
+        mix_columns(&mut mat);
+        
+        let expected = [[4;4], [102;4], [129;4], [229;4]];
+        assert_eq!(expected, mat);
     }
 }
