@@ -1,10 +1,10 @@
-use crate::{utils::{gf_multiplication, transpose, S_BOX}, BYTES_PER_ROW};
+use crate::{utils::{gf_multiplication, transpose, INVERSE_S_BOX, S_BOX}, BYTES_PER_ROW};
 
 
 pub trait Round {
     // Substitute bytes method
-    fn substitute_bytes(state: &mut [[u8; BYTES_PER_ROW]; BYTES_PER_ROW]) {
-        let s_box = S_BOX;
+    fn substitute_bytes(state: &mut [[u8; BYTES_PER_ROW]; BYTES_PER_ROW], inverse: bool) {
+        let s_box = if inverse { INVERSE_S_BOX } else { S_BOX };
         for i in 0..BYTES_PER_ROW {
             for j in 0..BYTES_PER_ROW {
                 state[i][j] = s_box[state[i][j] as usize];
@@ -15,6 +15,12 @@ pub trait Round {
     fn shift_rows(state: &mut [[u8; BYTES_PER_ROW]; BYTES_PER_ROW]) {
         for i in 0..state[0].len() {
             state[i].rotate_left(i);
+        }
+    }
+
+    fn inverse_shift_rows(state: &mut [[u8; BYTES_PER_ROW]; BYTES_PER_ROW]) {
+        for i in 0..state[0].len() {
+            state[i].rotate_right(i);
         }
     }
 
@@ -38,6 +44,33 @@ pub trait Round {
         transpose(state);
         for i in 0..BYTES_PER_ROW {
             Self::mix_column(&mut state[i]);
+        }
+        transpose(state);
+    }
+
+    // Optional method, used to implement inverse_mix_columns
+    fn inverse_mix_column(column: &mut [u8; BYTES_PER_ROW]) {
+        // Perform explicit matrix multiplication
+        let mut temp = [0; BYTES_PER_ROW];
+        temp[0] = gf_multiplication(0x0e, column[0]) ^ gf_multiplication(0x0b, column[1])
+                ^ gf_multiplication(0x0d, column[2]) ^ gf_multiplication(0x09, column[3]);
+
+        temp[1] = gf_multiplication(0x09, column[0]) ^ gf_multiplication(0x0e, column[1])
+                ^ gf_multiplication(0x0b, column[2]) ^ gf_multiplication(0x0d, column[3]);
+
+        temp[2] = gf_multiplication(0x0d, column[0]) ^ gf_multiplication(0x09, column[1])
+                ^ gf_multiplication(0x0e, column[2]) ^ gf_multiplication(0x0b, column[3]);
+
+        temp[3] = gf_multiplication(0x0b, column[0]) ^ gf_multiplication(0x0d, column[1])
+                ^ gf_multiplication(0x09, column[2]) ^ gf_multiplication(0x0e, column[3]);
+
+        *column = temp;
+    }
+
+    fn inverse_mix_columns(state: &mut [[u8; BYTES_PER_ROW]; BYTES_PER_ROW]) {
+        transpose(state);
+        for i in 0..BYTES_PER_ROW {
+            Self::inverse_mix_column(&mut state[i]);
         }
         transpose(state);
     }

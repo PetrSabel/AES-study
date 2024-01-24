@@ -49,6 +49,32 @@ pub fn padding(data: &Vec<u8>) -> Vec<u8> {
     result
 }
 
+pub fn unpadding(data: &Vec<u8>) -> Result<Vec<u8>, String> {
+    let padding = data[data.len()-1]; // Take last byte to understand the padding length
+    let mut result = data.clone();
+    for _ in 0..(padding as usize) {
+        let tmp = result.pop().expect("Padding should be longer");
+        if tmp != padding {
+            return Err("Wrong padding".to_string());
+        }
+    }
+
+    Ok(result)
+}
+
+// TODO: change string to error
+pub fn split_in_blocks(data: &Vec<u8>) -> Result<Vec<[u8;16]>, String> {
+    if data.len() % BLOCK_SIZE != 0 {
+        return Err(format!("String must be clearly divisible in blocks of {} size. 
+                    Consider to use first padding method.", BLOCK_SIZE));
+    }
+
+    let chunks: Vec<[u8; 16]> = data.chunks(16)
+            .map(|c| c.try_into().unwrap()).collect();
+
+    Ok(chunks)
+}
+
 fn rotl8(x: u8, mut shift: u32) -> u8 {
     shift %= 8;
     x.rotate_left(shift)
