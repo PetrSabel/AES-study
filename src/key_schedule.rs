@@ -1,11 +1,10 @@
-use crate::{BYTES_PER_ROW, utils::S_BOX};
+use crate::{utils::S_BOX, AESError, BYTES_PER_ROW};
 
 const R_CON: [u8;10] = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
 
 
 pub trait KeySchedule {
-    // TODO: make key size variable
-    fn key_schedule(key: &[u8; 16]) -> Vec<[[u8; BYTES_PER_ROW]; BYTES_PER_ROW]>;
+    fn key_schedule(key: &[u8]) -> Result<Vec<[[u8; BYTES_PER_ROW]; BYTES_PER_ROW]>, AESError>;
 
     // Add col2 values to col1
     fn add_to_column(col1: &mut [u8; BYTES_PER_ROW], col2: &[u8; BYTES_PER_ROW]) {
@@ -38,14 +37,14 @@ pub trait KeySchedule {
 
 #[cfg(test)]
 mod tests {
-    use crate::BYTES_PER_ROW;
+    use crate::{AESError, BYTES_PER_ROW};
     use super::KeySchedule;
 
     // Create empty struct with default Trait implementation
     struct Test;
     impl KeySchedule for Test {
-        fn key_schedule(_key: &[u8; 16]) -> Vec<[[u8; BYTES_PER_ROW]; BYTES_PER_ROW]> {
-            Vec::new()
+        fn key_schedule(_key: &[u8]) -> Result<Vec<[[u8; BYTES_PER_ROW]; BYTES_PER_ROW]>, AESError> {
+            Ok(Vec::new())
         }
     }
 

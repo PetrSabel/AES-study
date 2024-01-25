@@ -1,6 +1,6 @@
 use std::vec;
 
-use crate::{BYTES_PER_ROW, BLOCK_SIZE};
+use crate::{AESError, BLOCK_SIZE, BYTES_PER_ROW};
 
 const IRREDUCIBLE_POLY: u8 = 0x1B;
 pub const S_BOX: [u8;256] = [99, 124, 119, 123, 242, 107, 111, 197, 48, 1, 103, 43, 254, 215, 171, 118, 
@@ -37,6 +37,15 @@ pub const INVERSE_S_BOX: [u8;256] = [82, 9, 106, 213, 48, 54, 165, 56, 191, 64, 
                                 126, 186, 119, 214, 38, 225, 105, 20, 99, 85, 33, 12, 125];
 
 
+// TODO: add tests
+pub fn add_iv(block: &[u8;BLOCK_SIZE], iv: &[u8;BLOCK_SIZE]) -> [u8;BLOCK_SIZE] {
+    let mut result = [0; BLOCK_SIZE];
+    for i in 0..BLOCK_SIZE {
+        result[i] = block[i] ^ iv[i];
+    }
+
+    result
+}
 
 pub fn padding(data: &Vec<u8>) -> Vec<u8> {
     let len = data.len();
@@ -49,26 +58,27 @@ pub fn padding(data: &Vec<u8>) -> Vec<u8> {
     result
 }
 
-pub fn unpadding(data: &Vec<u8>) -> Result<Vec<u8>, String> {
+pub fn unpadding(data: &Vec<u8>) -> Result<Vec<u8>, AESError> {
     let padding = data[data.len()-1]; // Take last byte to understand the padding length
     let mut result = data.clone();
-    for _ in 0..(padding as usize) {
-        let tmp = result.pop().expect("Padding should be longer");
+    for i in 0..(padding as usize) {
+        let tmp = result.pop().ok_or(AESError::WrongPaddingLength(i+1, padding as usize))?;
         if tmp != padding {
-            return Err("Wrong padding".to_string());
+            return Err(AESError::WrongPaddingValue(tmp, padding));
         }
     }
 
     Ok(result)
 }
 
-// TODO: change string to error
-pub fn split_in_blocks(data: &Vec<u8>) -> Result<Vec<[u8;16]>, String> {
+pub fn split_in_blocks(data: &Vec<u8>) -> Result<Vec<[u8;BLOCK_SIZE]>, AESError> {
     if data.len() % BLOCK_SIZE != 0 {
-        return Err(format!("String must be clearly divisible in blocks of {} size. 
+        dbg!(format!("String must be clearly divisible in blocks of {} size. 
                     Consider to use first padding method.", BLOCK_SIZE));
+        return Err(AESError::DataNotDivisibleInBlocks(data.len(), BLOCK_SIZE));
     }
 
+    // At this point data should be separable in chunks
     let chunks: Vec<[u8; 16]> = data.chunks(16)
             .map(|c| c.try_into().unwrap()).collect();
 
@@ -154,16 +164,18 @@ pub(crate) fn gf_multiplication(mut a: u8, mut b: u8) -> u8 {
 
 // Swap columns with rows
 pub(crate) fn transpose(matrix: &mut [[u8; BYTES_PER_ROW]; BYTES_PER_ROW]) {
-    let tmp = matrix.clone();
+    // Assume matrix is square
     for i in 0..matrix.len() {
-        for j in 0..matrix[0].len() {
-            matrix[i][j] = tmp[j][i];
+        for j in 0..i {
+            let tmp = matrix[i][j];
+            matrix[i][j] = matrix[j][i];
+            matrix[j][i] = tmp;
         }
     }
 }
 
 // Transform 16-byte array into 4x4 bytes matrix
-pub(crate) fn array_into_matrix(arr: [u8; 16]) -> [[u8; BYTES_PER_ROW]; BYTES_PER_ROW] {
+pub(crate) fn array_into_matrix(arr: &[u8; 16]) -> [[u8; BYTES_PER_ROW]; BYTES_PER_ROW] {
     let mut result = [[0; BYTES_PER_ROW]; BYTES_PER_ROW];
     for i in 0..arr.len() {
         result[i%BYTES_PER_ROW][i/BYTES_PER_ROW] = arr[i];
@@ -172,11 +184,12 @@ pub(crate) fn array_into_matrix(arr: [u8; 16]) -> [[u8; BYTES_PER_ROW]; BYTES_PE
 }
 
 // Transform 4x4 bytes matrix into 16-byte array
-pub(crate) fn matrix_to_array(mut matrix: [[u8; BYTES_PER_ROW]; BYTES_PER_ROW]) -> [u8; 16] {
+pub(crate) fn matrix_to_array(matrix: &[[u8; BYTES_PER_ROW]; BYTES_PER_ROW]) -> [u8; 16] {
     let mut result = [0; 16];
 
-    transpose(&mut matrix);
-    for (i, m) in matrix.into_iter().flatten().enumerate() {
+    let mut tmp = matrix.clone();
+    transpose(&mut tmp);
+    for (i, m) in tmp.into_iter().flatten().enumerate() {
         result[i] = m;
     }
     result
@@ -186,7 +199,7 @@ pub(crate) fn matrix_to_array(mut matrix: [[u8; BYTES_PER_ROW]; BYTES_PER_ROW]) 
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::gf_multiplication;
+    use crate::{utils::{add_iv, gf_multiplication, transpose}, BLOCK_SIZE};
 
     use super::{array_into_matrix, compute_inverse_s_box, compute_s_box, padding};
 
@@ -222,7 +235,7 @@ mod tests {
     fn test_array_into_matrix() {
         let array = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
         let matrix = [[0, 4, 8, 12], [1, 5, 9, 13], [2, 6, 10, 14], [3, 7, 11, 15]];
-        assert_eq!(array_into_matrix(array), matrix);
+        assert_eq!(array_into_matrix(&array), matrix);
     }
 
     #[test]
@@ -231,5 +244,23 @@ mod tests {
         let b = 0x02;
         assert_eq!(0xb3, gf_multiplication(a, b));
         assert_eq!(a, gf_multiplication(a, 0x1));
+    }
+
+    #[test]
+    fn test_add_iv() {
+        let a = [0xd4;BLOCK_SIZE];
+        let b = [0x02;BLOCK_SIZE];
+
+        let result = add_iv(&a, &b);
+        assert_eq!(result, [0xd6;BLOCK_SIZE]);
+    }
+
+    #[test]
+    fn test_transpose() {
+        let mut mat = [[0,1,2,3],[4,5,6,7],[8,9,10,11],[12,13,14,15]];
+        let expected = [[0,4,8,12],[1,5,9,13],[2,6,10,14],[3,7,11,15]];
+
+        transpose(&mut mat);
+        assert_eq!(expected, mat);
     }
 }
