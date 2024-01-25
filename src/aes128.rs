@@ -36,7 +36,7 @@ impl KeySchedule for AES128 {
         let key = key.try_into().unwrap();
 
         let mut first_key: [[u8; BYTES_PER_ROW]; BYTES_PER_ROW] = array_into_matrix(&key);
-        // // Temporally store keys by-columns
+        // Temporally store keys by-columns
         transpose(&mut first_key);
         let mut generated_keys = [first_key; ROUNDS_NUMBER];
         // Leave first key untouched
@@ -140,22 +140,34 @@ impl AES for AES128 {
                 }
                 tmp
             },
-            _ => panic!("Not recognized mode")
+            AESMode::OFB => {
+                let mut tmp = Vec::new();
+                let mut iv = self.iv
+                        .ok_or(AESError::ModeRequiresIV(mode))?;
+                
+                for block in data {
+                    iv = self.encrypt_block(&iv);
+                    tmp.push(add_iv(block, &iv));
+                }
+
+                tmp
+            }
         };
 
         Ok(result)
     }
 
-    fn encrypt_string(&self, s: &str) -> String {
+
+    fn encrypt_string(&self, s: &str) -> Result<String, AESError> {
         let bytes: Vec<u8> = s.as_bytes().to_owned();
         let padded = padding(&bytes);
         // Padding should work correctly
-        let chunks: Vec<[u8; 16]> = split_in_blocks(&padded).unwrap();
-        let encrypted_chunks: Vec<_> = chunks.into_iter().map(|b| self.encrypt_block(&b)).collect();
+        let data = split_in_blocks(&padded).unwrap();
+        let encrypted_chunks: Vec<_> = self.encrypt_blocks(&data, AESMode::ECB)?;
         let result: Vec<_> = encrypted_chunks.into_iter().flatten().collect();
 
         let result = encode(result);
-        result
+        Ok(result)
     }
 
     fn decrypt_block(&self, block: &[u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
@@ -182,17 +194,48 @@ impl AES for AES128 {
         result
     }
 
+    fn decrypt_blocks(&self, data: &[[u8; BLOCK_SIZE]], mode: AESMode)
+                        -> Result<Vec<[u8; BLOCK_SIZE]>, AESError> {
+        let result = match mode {
+            AESMode::ECB => {
+                let mut tmp = Vec::new();
+                for block in data {
+                    tmp.push(self.decrypt_block(block));
+                }
+                tmp 
+            },
+            AESMode::CBC => {
+                let mut tmp = Vec::new();
+                for i in (1..data.len()).rev() {
+                    tmp.push(add_iv(&self.decrypt_block(&data[i]), &data[i-1]));
+                }
+                if data.len() > 0 {
+                    let iv = self.iv.as_ref().ok_or(AESError::ModeRequiresIV(mode))?;
+                    tmp.push(add_iv(&self.decrypt_block(&data[0]), iv));
+                }
+
+                tmp
+            },
+            AESMode::OFB => {
+                // Same as encrypt
+                self.encrypt_blocks(data, mode)?
+            }
+        };
+
+        Ok(result) 
+    }
+
     // Get string of bytes in hex and return normal string
     fn decrypt_string(&self, s: &str) -> Result<String, AESError> {
         let bytes: Vec<u8> = decode(s).ok().ok_or(AESError::TryDecodeNotHEXString(s.to_string()))?;
         let chunks: Vec<[u8; 16]> = split_in_blocks(&bytes)?;
-        let decrypted_chunks: Vec<_> = chunks.into_iter().map(|b| self.decrypt_block(&b)).collect();
+        let decrypted_chunks: Vec<_> = self.decrypt_blocks(chunks.as_slice(), AESMode::ECB)?;
         let result: Vec<_> = decrypted_chunks.into_iter().flatten().collect();
         
         let result = unpadding(&result)?;
-        // TODO: Maybe declare new error for this (but it is not inside AES trait)
-        let result = String::from_utf8(result)
-                .expect("Decrypted string cannot be decoded as UTF-8.");
+        dbg!("Decrypted string cannot be decoded as UTF-8.");
+        let result = String::from_utf8(result.clone())
+                .ok().ok_or(AESError::DecryptedStringNotUTF8(result))?;
         
         Ok(result)
     }
@@ -244,14 +287,27 @@ mod aes128_tests {
 
         let result = aes.encrypt_blocks(&data, AESMode::CBC).unwrap();
 
-        println!("{:?}", result);
         assert_ne!(result[0], result[1]);
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_blocks_cbc() {
+        let block: [u8;16] = "crypto{MYAES128}".as_bytes().try_into().unwrap();
+        let key: [u8;16] = [0xc3, 0x2c, 0x5c, 166, 181, 128, 94, 12, 219, 141, 165, 122, 42, 182, 254, 92];
+        let aes = AES128::new(&key, Some(block.clone())).unwrap();
+        let data = [block; 2];
+
+        let mode = AESMode::CBC;
+        let crypted = aes.encrypt_blocks(&data, mode).unwrap();
+        let decrypted = aes.decrypt_blocks(&crypted, mode).unwrap();
+
+        assert_eq!(data.to_vec(), decrypted);
     }
 
     #[test]
     fn test_encrypt_string() {
         let aes = AES128::new_str_key("aaaabbbbccccdddd", None).expect("The key size is wrong");
-        let result = aes.encrypt_string("crypto{MYAES128}");
+        let result = aes.encrypt_string("crypto{MYAES128}").unwrap();
         let expected = "f1c7205c1673507d92530837341bcaca6351bbed02ca98ca6f3ea54112e8a720";
 
         assert_eq!(expected, result);
@@ -293,7 +349,7 @@ mod aes128_tests {
     fn test_encrypt_decrypt_string() {
         let aes = AES128::new_str_key("aaaabbbbccccdddd", None).expect("The key size is wrong");
         let s = "crypto{MYAES128}";
-        let result = aes.encrypt_string(s);
+        let result = aes.encrypt_string(s).unwrap();
         let decrypted = aes.decrypt_string(&result).unwrap();
         assert_eq!(s, decrypted);
     }

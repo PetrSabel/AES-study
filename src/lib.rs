@@ -11,7 +11,7 @@ mod aes128;
 pub const BLOCK_SIZE: usize = 16;
 pub(crate) const BYTES_PER_ROW: usize = 4;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum AESMode {
     ECB,
     CBC,
@@ -27,6 +27,7 @@ pub enum AESError {
     TryDecodeNotHEXString(String),
     WrongPaddingLength(usize, usize),
     WrongPaddingValue(u8, u8),
+    DecryptedStringNotUTF8(Vec<u8>),
 }
 
 // TODO: read from file
@@ -43,10 +44,12 @@ pub trait AES: KeySchedule + Round {
     fn encrypt_blocks(&self, data: &[[u8; BLOCK_SIZE]], mode: AESMode)
                         -> Result<Vec<[u8; BLOCK_SIZE]>, AESError>;
     // Take UTF-8 string and produces encypted string encoded in HEX
-    fn encrypt_string(&self, s: &str) -> String;
+    fn encrypt_string(&self, s: &str) -> Result<String, AESError>;
 
     // Decrypt only one block
     fn decrypt_block(&self, block: &[u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE];
+    fn decrypt_blocks(&self, data: &[[u8; BLOCK_SIZE]], mode: AESMode)
+                        -> Result<Vec<[u8; BLOCK_SIZE]>, AESError>;
     // Take HEX encoded string and produces UTF-8 string
     fn decrypt_string(&self, s: &str) -> Result<String, AESError>;
 }
