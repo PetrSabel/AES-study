@@ -1,4 +1,7 @@
-use std::vec;
+use std::io::{Error, Read};
+use std::{fs::File, vec};
+use std::fmt::Write;
+use std::fs::OpenOptions;
 
 use crate::{AESError, BLOCK_SIZE, BYTES_PER_ROW};
 
@@ -37,6 +40,45 @@ pub const INVERSE_S_BOX: [u8;256] = [82, 9, 106, 213, 48, 54, 165, 56, 191, 64, 
                                 126, 186, 119, 214, 38, 225, 105, 20, 99, 85, 33, 12, 125];
 
 
+pub(crate) fn read_from_file(filename: &str) -> Result<Vec<u8>, Error> {
+    let mut f = File::open(filename)?;
+    let mut result = Vec::new();
+    f.read_to_end(&mut result)?;
+
+    Ok(result)
+}
+
+pub(crate) fn write_to_file(filename: &str, data: &Vec<u8>) -> Result<(),Error> {
+    let mut f = OpenOptions::new()
+            .truncate(true)
+            .write(true)
+            .create(true)
+            .open(filename)?;
+
+    std::io::Write::write_all(&mut f, data)?;
+    Ok(())
+}
+
+pub fn encode(bytes: Vec<u8>) -> String {
+    let mut s: String = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        write!(&mut s, "{:02x}", b).unwrap();
+    }
+
+    s
+}
+
+pub fn decode(s: &str) -> Result<Vec<u8>, AESError> {
+    let mut result = Vec::new();
+
+    for i in (0..s.len()).step_by(2) {
+        result.push(u8::from_str_radix(&s[i..i + 2], 16)
+                    .ok().ok_or(AESError::TryDecodeNotHEXString(s.to_string()))?);
+    }
+    
+    Ok(result)
+}
+                                
 // TODO: add tests
 pub fn add_iv(block: &[u8;BLOCK_SIZE], iv: &[u8;BLOCK_SIZE]) -> [u8;BLOCK_SIZE] {
     let mut result = [0; BLOCK_SIZE];
@@ -49,7 +91,7 @@ pub fn add_iv(block: &[u8;BLOCK_SIZE], iv: &[u8;BLOCK_SIZE]) -> [u8;BLOCK_SIZE] 
 
 pub fn padding(data: &Vec<u8>) -> Vec<u8> {
     let len = data.len();
-    let padding_len = BLOCK_SIZE - len % BLOCK_SIZE;
+    let padding_len = BLOCK_SIZE - (len % BLOCK_SIZE);
     // Padding length is between 0 and 16, so u8 is enough
     let mut padding = vec![padding_len as u8; padding_len];
     let mut result = data.clone();
@@ -60,6 +102,9 @@ pub fn padding(data: &Vec<u8>) -> Vec<u8> {
 
 pub fn unpadding(data: &Vec<u8>) -> Result<Vec<u8>, AESError> {
     let padding = data[data.len()-1]; // Take last byte to understand the padding length
+    if padding as usize > BLOCK_SIZE {
+        return Err(AESError::WrongPaddingValue(BLOCK_SIZE as u8, padding));
+    }
     let mut result = data.clone();
     for i in 0..(padding as usize) {
         let tmp = result.pop().ok_or(AESError::WrongPaddingLength(i+1, padding as usize))?;
@@ -83,6 +128,10 @@ pub fn split_in_blocks(data: &Vec<u8>) -> Result<Vec<[u8;BLOCK_SIZE]>, AESError>
             .map(|c| c.try_into().unwrap()).collect();
 
     Ok(chunks)
+}
+
+pub fn unite_blocks(data: &Vec<[u8;16]>) -> Vec<u8> {
+    data.clone().into_iter().flatten().collect()
 }
 
 fn rotl8(x: u8, mut shift: u32) -> u8 {
@@ -199,9 +248,21 @@ pub(crate) fn matrix_to_array(matrix: &[[u8; BYTES_PER_ROW]; BYTES_PER_ROW]) -> 
 
 #[cfg(test)]
 mod tests {
-    use crate::{utils::{add_iv, gf_multiplication, transpose}, BLOCK_SIZE};
+    use crate::{utils::{add_iv, decode, encode, gf_multiplication, transpose}, BLOCK_SIZE};
 
     use super::{array_into_matrix, compute_inverse_s_box, compute_s_box, padding};
+
+    #[test]
+    fn test_encode() {
+        let bytes = vec![0x01, 0x10, 0xff];
+        assert_eq!(encode(bytes), "0110ff");
+    }
+
+    #[test]
+    fn test_decode() {
+        let bytes = vec![0x01, 0x10, 0xff];
+        assert_eq!(bytes, decode("0110ff").unwrap());
+    }
 
     #[test]
     fn test_padding() {

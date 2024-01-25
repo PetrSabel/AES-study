@@ -1,6 +1,7 @@
-use hex::{decode, encode};
-
-use crate::{key_schedule::KeySchedule, round_operations::Round, utils::{add_iv, array_into_matrix, matrix_to_array, padding, split_in_blocks, transpose, unpadding}, AESError, AESMode, AES, BLOCK_SIZE, BYTES_PER_ROW};
+use std::io::Error;
+use crate::{key_schedule::KeySchedule, round_operations::Round, 
+    utils::{add_iv, array_into_matrix, decode, encode, matrix_to_array, padding, read_from_file, split_in_blocks, transpose, unite_blocks, unpadding, write_to_file}, 
+    AESError, AESMode, AES, BLOCK_SIZE, BYTES_PER_ROW};
 
 const KEY_SIZE_BYTES: usize  = 16;
 const ROUNDS_NUMBER: usize = 11;
@@ -24,6 +25,39 @@ impl AES128 {
             keys,
             iv
         })
+    }
+
+    pub fn encrypt_file(&self, filename: &str) -> Result<(), Error> {
+        let data = read_from_file(filename)?;
+        println!("{:?}", &data[..BLOCK_SIZE]);
+        let padded = padding(&data);
+        // Data are padded
+        let chunks = split_in_blocks(&padded).unwrap();
+        // TODO: add new Error to AESError
+        let crypted_data = self.encrypt_blocks(chunks.as_slice(), AESMode::CBC).expect("IV not provided");
+
+        let crypted_data = unite_blocks(&crypted_data);
+        println!("{:?}", &crypted_data[crypted_data.len()-BLOCK_SIZE..]);
+        write_to_file(&("crypted_".to_string() + filename), &crypted_data)?;
+        Ok(())
+    }
+
+    pub fn decrypt_file(&self, filename: &str) -> Result<(), Error> {
+        let data = read_from_file(filename)?;
+        println!("{:?}", &data[data.len()-BLOCK_SIZE..]);
+        
+        // Data are padded
+        let chunks = split_in_blocks(&data).unwrap();
+        // TODO: add new Error to AESError
+        let decrypted_data = self.decrypt_blocks(chunks.as_slice(), AESMode::CBC).expect("IV not provided");
+
+        let decrypted_data = unite_blocks(&decrypted_data);
+        println!("DATA LEN {} % 16 = {}", decrypted_data.len(), decrypted_data.len() % 16);
+        println!("{:?}", &decrypted_data[..BLOCK_SIZE]);
+        let decrypted_data = unpadding(&decrypted_data).expect("Cannot unpad data");
+
+        write_to_file(&("decrypted_".to_string() + filename), &decrypted_data)?;
+        Ok(())
     }
 }
 
@@ -157,7 +191,6 @@ impl AES for AES128 {
         Ok(result)
     }
 
-
     fn encrypt_string(&self, s: &str) -> Result<String, AESError> {
         let bytes: Vec<u8> = s.as_bytes().to_owned();
         let padded = padding(&bytes);
@@ -214,7 +247,7 @@ impl AES for AES128 {
                     tmp.push(add_iv(&self.decrypt_block(&data[0]), iv));
                 }
 
-                tmp
+                tmp.into_iter().rev().collect()
             },
             AESMode::OFB => {
                 // Same as encrypt
@@ -295,7 +328,8 @@ mod aes128_tests {
         let block: [u8;16] = "crypto{MYAES128}".as_bytes().try_into().unwrap();
         let key: [u8;16] = [0xc3, 0x2c, 0x5c, 166, 181, 128, 94, 12, 219, 141, 165, 122, 42, 182, 254, 92];
         let aes = AES128::new(&key, Some(block.clone())).unwrap();
-        let data = [block; 2];
+        let mut data = [block; 2];
+        data[1][13] += 1; // Change second block
 
         let mode = AESMode::CBC;
         let crypted = aes.encrypt_blocks(&data, mode).unwrap();
@@ -352,5 +386,18 @@ mod aes128_tests {
         let result = aes.encrypt_string(s).unwrap();
         let decrypted = aes.decrypt_string(&result).unwrap();
         assert_eq!(s, decrypted);
+    }
+
+    #[test]
+    fn test_image() {
+        let key: [u8;16] = [0xc3, 0x2c, 0x5c, 166, 181, 128, 94, 12, 219, 141, 165, 122, 42, 182, 254, 92];
+        let iv: [u8;16] = [0xee;16];
+        let aes = AES128::new(&key, Some(iv)).unwrap();
+        
+        let file = "test.png";
+        aes.encrypt_file(file).unwrap();
+
+        let file = "crypted_test.png";
+        aes.decrypt_file(file).unwrap();
     }
 }

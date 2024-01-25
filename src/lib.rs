@@ -32,7 +32,6 @@ pub enum AESError {
 
 // TODO: read from file
 // TODO: add more advanced modes
-// TODO: write simple function to encode/decode HEX
 // TODO: add more tests
 pub trait AES: KeySchedule + Round {
     // Create instance of AES structure
