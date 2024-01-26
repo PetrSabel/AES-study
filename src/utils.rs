@@ -40,6 +40,8 @@ pub const INVERSE_S_BOX: [u8;256] = [82, 9, 106, 213, 48, 54, 165, 56, 191, 64, 
                                 126, 186, 119, 214, 38, 225, 105, 20, 99, 85, 33, 12, 125];
 
 
+// Note: not sure how to test these functions
+// This function reads chunks from the given file
 pub(crate) fn read_from_file(filename: &str) -> Result<Vec<u8>, Error> {
     let mut f = File::open(filename)?;
     let mut result = Vec::new();
@@ -48,6 +50,7 @@ pub(crate) fn read_from_file(filename: &str) -> Result<Vec<u8>, Error> {
     Ok(result)
 }
 
+// Write data (crypted) in the given file
 pub(crate) fn write_to_file(filename: &str, data: &Vec<u8>) -> Result<(),Error> {
     let mut f = OpenOptions::new()
             .truncate(true)
@@ -78,8 +81,7 @@ pub fn decode(s: &str) -> Result<Vec<u8>, AESError> {
     
     Ok(result)
 }
-                                
-// TODO: add tests
+
 pub fn add_iv(block: &[u8;BLOCK_SIZE], iv: &[u8;BLOCK_SIZE]) -> [u8;BLOCK_SIZE] {
     let mut result = [0; BLOCK_SIZE];
     for i in 0..BLOCK_SIZE {
@@ -224,7 +226,7 @@ pub(crate) fn transpose(matrix: &mut [[u8; BYTES_PER_ROW]; BYTES_PER_ROW]) {
 }
 
 // Transform 16-byte array into 4x4 bytes matrix
-pub(crate) fn array_into_matrix(arr: &[u8; 16]) -> [[u8; BYTES_PER_ROW]; BYTES_PER_ROW] {
+pub(crate) fn array_to_matrix(arr: &[u8; 16]) -> [[u8; BYTES_PER_ROW]; BYTES_PER_ROW] {
     let mut result = [[0; BYTES_PER_ROW]; BYTES_PER_ROW];
     for i in 0..arr.len() {
         result[i%BYTES_PER_ROW][i/BYTES_PER_ROW] = arr[i];
@@ -248,9 +250,9 @@ pub(crate) fn matrix_to_array(matrix: &[[u8; BYTES_PER_ROW]; BYTES_PER_ROW]) -> 
 
 #[cfg(test)]
 mod tests {
-    use crate::{utils::{add_iv, decode, encode, gf_multiplication, transpose}, BLOCK_SIZE};
+    use crate::{utils::{add_iv, decode, encode, gf_multiplication, matrix_to_array, rotl8, transpose, INVERSE_S_BOX}, BLOCK_SIZE};
 
-    use super::{array_into_matrix, compute_inverse_s_box, compute_s_box, padding};
+    use super::{array_to_matrix, compute_inverse_s_box, compute_s_box, padding, unite_blocks, unpadding, S_BOX};
 
     #[test]
     fn test_encode() {
@@ -277,6 +279,52 @@ mod tests {
     }
 
     #[test]
+    fn test_unpadding() {
+        for i in 1..17 {
+            let mut data = vec![0xab;i];
+            let expected = data.clone();
+            data.append(&mut vec![(16-i%16) as u8; 16-i%16]);
+            let unpadded = unpadding(&data).unwrap();
+
+            assert_eq!(expected, unpadded);
+        }
+    }
+
+    #[test]
+    fn test_padding_unpadding() {
+        for i in 1..17 {
+            let data = vec![0; i];
+            let result = padding(&data);
+
+            let unpadded = unpadding(&result).unwrap();
+            assert_eq!(unpadded, data);
+        }
+    }
+
+    #[test]
+    fn test_unite_blocks() {
+        let v = vec![[0xff;16], [0xaa;16], [0x12;16]];
+        let result = unite_blocks(&v);
+
+        let mut expected = vec![0xff;16];
+        expected.append(&mut vec![0xaa;16]);
+        expected.append(&mut vec![0x12;16]);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_rotl8() {
+        let test = 8;
+        let result = rotl8(test, 4);
+        assert_eq!(result, 128);
+
+        // Circular
+        let test = 0xfe;
+        let result = rotl8(test, 4);
+        assert_eq!(result, 0xef);
+    }
+
+    #[test]
     fn test_s_box() {
         let s_box = compute_s_box();
         let first_row:[u8;16] = [0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 
@@ -293,10 +341,26 @@ mod tests {
     }
 
     #[test]
-    fn test_array_into_matrix() {
+    fn test_s_box_and_inverse() {
+        for i in 0..256 {
+            let s = S_BOX[i];
+            let reversed = INVERSE_S_BOX[s as usize];
+            assert_eq!(i as u8, reversed);
+        }
+    }
+
+    #[test]
+    fn test_array_to_matrix() {
         let array = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
         let matrix = [[0, 4, 8, 12], [1, 5, 9, 13], [2, 6, 10, 14], [3, 7, 11, 15]];
-        assert_eq!(array_into_matrix(&array), matrix);
+        assert_eq!(array_to_matrix(&array), matrix);
+    }
+
+    #[test]
+    fn test_matrix_to_array() {
+        let array = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+        let matrix = [[0, 4, 8, 12], [1, 5, 9, 13], [2, 6, 10, 14], [3, 7, 11, 15]];
+        assert_eq!(matrix_to_array(&matrix), array);
     }
 
     #[test]

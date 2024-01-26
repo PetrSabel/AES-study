@@ -1,6 +1,6 @@
 use std::io::Error;
 use crate::{key_schedule::KeySchedule, round_operations::Round, 
-    utils::{add_iv, array_into_matrix, decode, encode, matrix_to_array, padding, read_from_file, split_in_blocks, transpose, unite_blocks, unpadding, write_to_file}, 
+    utils::{add_iv, array_to_matrix, decode, encode, matrix_to_array, padding, read_from_file, split_in_blocks, transpose, unite_blocks, unpadding, write_to_file}, 
     AESError, AESMode, AES, BLOCK_SIZE, BYTES_PER_ROW};
 
 const KEY_SIZE_BYTES: usize  = 16;
@@ -69,7 +69,7 @@ impl KeySchedule for AES128 {
         // At this point key should have the needed size
         let key = key.try_into().unwrap();
 
-        let mut first_key: [[u8; BYTES_PER_ROW]; BYTES_PER_ROW] = array_into_matrix(&key);
+        let mut first_key: [[u8; BYTES_PER_ROW]; BYTES_PER_ROW] = array_to_matrix(&key);
         // Temporally store keys by-columns
         transpose(&mut first_key);
         let mut generated_keys = [first_key; ROUNDS_NUMBER];
@@ -127,7 +127,7 @@ impl AES for AES128 {
 
     // Apply all round to one block
     fn encrypt_block(&self, block: &[u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
-        let mut block = array_into_matrix(block);
+        let mut block = array_to_matrix(block);
         let keys = &self.keys;
 
         // First round
@@ -204,7 +204,7 @@ impl AES for AES128 {
     }
 
     fn decrypt_block(&self, block: &[u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
-        let mut block = array_into_matrix(block);
+        let mut block = array_to_matrix(block);
         let keys = &self.keys;
 
         // First round

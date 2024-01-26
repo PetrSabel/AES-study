@@ -96,6 +96,21 @@ mod tests {
     struct Test;
     impl Round for Test {}
 
+
+    #[test]
+    fn test_substitute_and_reverse() {
+        let mut rows: [[u8; 4]; 4] = [[0, 1, 2, 3],
+                                    [4, 5, 6, 7],
+                                    [8, 9, 10, 11],
+                                    [12, 13, 14, 15]];
+        let expected = rows.clone();
+
+        Test::substitute_bytes(&mut rows, false);
+        Test::substitute_bytes(&mut rows, true);
+
+        assert_eq!(rows, expected);
+    }
+
     #[test]
     fn test_shift_rows() {
 
@@ -113,11 +128,63 @@ mod tests {
     }
 
     #[test]
+    fn test_inverse_shift_rows() {
+
+        let rows: [[u8; 4]; 4] = [[0, 1, 2, 3],
+                                    [4, 5, 6, 7],
+                                    [8, 9, 10, 11],
+                                    [12, 13, 14, 15]];
+        let mut shifted_rows: [[u8; 4]; 4] = [[0, 1, 2, 3],
+                                        [5, 6, 7, 4],
+                                        [10, 11, 8, 9],
+                                        [15, 12, 13, 14]];
+
+        Test::inverse_shift_rows(&mut shifted_rows);
+        assert_eq!(rows, shifted_rows);
+    }
+
+    #[test]
+    fn test_shift_rows_and_reverse() {
+
+        let mut rows: [[u8; 4]; 4] = [[0, 1, 2, 3],
+                                    [4, 5, 6, 7],
+                                    [8, 9, 10, 11],
+                                    [12, 13, 14, 15]];
+        let expected = rows.clone();
+
+        Test::shift_rows(&mut rows);
+        Test::inverse_shift_rows(&mut rows);
+
+        assert_eq!(rows, expected);
+    }
+
+    #[test]
     fn test_mix_column() {
         let mut column = [0xd4, 0xbf, 0x5d, 0x30];
         Test::mix_column(&mut column);
 
         let expected = [4, 102, 129, 229];
+        assert_eq!(column, expected);
+    }
+
+    #[test]
+    fn test_inverse_mix_column() {
+        let column = [0xd4, 0xbf, 0x5d, 0x30];
+        let mut expected = [4, 102, 129, 229];
+        
+        Test::inverse_mix_column(&mut expected);
+
+        assert_eq!(column, expected);
+    }
+
+    #[test]
+    fn test_mix_column_and_reverse() {
+        let mut column = [0xd4, 0xbf, 0x5d, 0x30];
+        let expected = column.clone();
+        
+        Test::mix_column(&mut column);
+        Test::inverse_mix_column(&mut column);
+
         assert_eq!(column, expected);
     }
 
@@ -131,5 +198,43 @@ mod tests {
         
         let expected = [[4;4], [102;4], [129;4], [229;4]];
         assert_eq!(expected, mat);
+    }
+
+    #[test]
+    fn test_inverse_mix_columns() {
+        let column = [[0xd4;4], [0xbf;4], [0x5d;4], [0x30;4]];
+        let expected = [4, 102, 129, 229];
+        let mut mat = [expected; 4];
+        transpose(&mut mat);
+
+        Test::inverse_mix_columns(&mut mat);
+        
+        assert_eq!(column, mat);
+    }
+
+    #[test]
+    fn test_mix_columns_and_reverse() {
+        let column = [0xd4, 0xbf, 0x5d, 0x30];
+        let expected = column.clone();
+
+        let mut mat = [column; 4];
+        transpose(&mut mat);
+
+        Test::mix_columns(&mut mat);
+        Test::inverse_mix_columns(&mut mat);
+        transpose(&mut mat);
+
+        assert_eq!(expected, mat[0]);
+    }
+
+    #[test]
+    fn test_add_round_key() {
+        let mut state = [[0xd4, 0xbf, 0x5d, 0x30]; 4];
+        let key = [[0x1, 0x3, 0xd, 0xf]; 4];
+
+        Test::add_round_key(&mut state, &vec![key], 0);
+
+        let expected = [[0xd5, 0xbc, 0x50, 0x3f]; 4];
+        assert_eq!(state, expected);
     }
 }

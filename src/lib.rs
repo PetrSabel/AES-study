@@ -18,7 +18,7 @@ pub enum AESMode {
     OFB
 }
 
-// TODO: add tests
+// TODO: add tests for errors
 #[derive(Debug)]
 pub enum AESError {
     DataNotDivisibleInBlocks(usize, usize),
@@ -30,9 +30,7 @@ pub enum AESError {
     DecryptedStringNotUTF8(Vec<u8>),
 }
 
-// TODO: read from file
 // TODO: add more advanced modes
-// TODO: add more tests
 pub trait AES: KeySchedule + Round {
     // Create instance of AES structure
     fn new(key: &[u8], iv: Option<[u8;BLOCK_SIZE]>) -> Result<Box<Self>, AESError>;

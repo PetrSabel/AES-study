@@ -6,7 +6,7 @@ const R_CON: [u8;10] = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x
 pub trait KeySchedule {
     fn key_schedule(key: &[u8]) -> Result<Vec<[[u8; BYTES_PER_ROW]; BYTES_PER_ROW]>, AESError>;
 
-    // Add col2 values to col1
+    // Add (xor) col2 values to col1
     fn add_to_column(col1: &mut [u8; BYTES_PER_ROW], col2: &[u8; BYTES_PER_ROW]) {
         for i in 0..col1.len() {
             col1[i] ^= col2[i];
@@ -37,7 +37,7 @@ pub trait KeySchedule {
 
 #[cfg(test)]
 mod tests {
-    use crate::{AESError, BYTES_PER_ROW};
+    use crate::{key_schedule::R_CON, AESError, BYTES_PER_ROW};
     use super::KeySchedule;
 
     // Create empty struct with default Trait implementation
@@ -55,5 +55,35 @@ mod tests {
         let expected = [182, 254, 92, 42];
 
         assert_eq!(expected, word);
+    }
+
+    #[test]
+    fn test_add_to_column() {
+        let mut column = [42, 182, 254, 92];
+        let adding = [5, 3, 1, 2];
+        Test::add_to_column(&mut column, &adding);
+        let expected = [47, 181, 255, 94];
+
+        assert_eq!(expected, column);
+    }
+
+    #[test]
+    fn test_sub_word() {
+        let mut word = [0x42, 0x82, 0xf4, 0xad];
+        Test::sub_word(&mut word);
+        let expected = [0x2c, 0x13, 0xbf, 0x95];
+
+        assert_eq!(expected, word);
+    }
+
+    #[test]
+    fn test_r_con() {
+        for i in 1..R_CON.len() {
+            let mut column = [0, 182, 254, 92];
+            Test::r_con(&mut column, i);
+
+            let expected = [0 + R_CON[i-1], column[1], column[2], column[3]];
+            assert_eq!(expected, column);
+        }
     }
 }
