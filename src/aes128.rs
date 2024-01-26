@@ -388,7 +388,8 @@ mod aes128_tests {
         assert_eq!(s, decrypted);
     }
 
-    #[test]
+    // Only local test
+    // #[test]
     fn test_image() {
         let key: [u8;16] = [0xc3, 0x2c, 0x5c, 166, 181, 128, 94, 12, 219, 141, 165, 122, 42, 182, 254, 92];
         let iv: [u8;16] = [0xee;16];
